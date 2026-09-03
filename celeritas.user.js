@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Celeritas
 // @namespace    celeritas
-// @version      0.1.0
+// @version      0.2.0
 // @description  On the Roche Limit.
 // @author       LyCecilion
 // @match        https://xk.xidian.edu.cn/xsxk/elective/grablessons*
