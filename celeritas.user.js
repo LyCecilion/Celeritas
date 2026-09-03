@@ -55,6 +55,41 @@
       (c) => !grabbed.includes(c.code) && !skipped.includes(c.code),
     );
   }
+  function releaseClaimed(claimed, code) {
+    return claimed.filter(function (c) {
+      return c !== code;
+    });
+  }
+  function markRemainingSkipped(courses, grabbed, skipped) {
+    for (let i = 0; i < courses.length; i++) {
+      const c = courses[i];
+      if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
+        skipped.push(c.code);
+      }
+    }
+  }
+  function pickVolunteer(volList, want) {
+    return volList.some(function (v) {
+      return v.grade === want;
+    })
+      ? want
+      : volList[0].grade;
+  }
+  function courseListed(rows, code) {
+    return rows.some(function (r) {
+      return r.KCH === code || (r.KCH && String(r.KCH).indexOf(code) !== -1);
+    });
+  }
+  function courseSelected(rows, code, jxbid, sportName) {
+    return rows.some(function (r) {
+      const jx = r.JXBID || r.jxbid || r.clazzId || "";
+      const sn = r.sportName || r.sportname || "";
+      if (jxbid && jx) return jx === jxbid;
+      if (sportName && sn) return sn === sportName;
+      const kch = r.KCH || r.kch || "";
+      return kch === code || (kch && String(kch).indexOf(code) !== -1);
+    });
+  }
   function normalizeCourse(c) {
     if (!("jxbid" in c)) {
       c.jxbid = null;
@@ -611,9 +646,7 @@
           continue;
         const rows = extractRows(res.data.data);
         if (!rows || !rows.length) continue;
-        const found = rows.find(function (r) {
-          return r.KCH === code || (r.KCH && r.KCH.indexOf(code) !== -1);
-        });
+        const found = courseListed(rows, code);
         if (found) {
           log(
             "\u2714 \u5DF2\u9A8C\u8BC1: " +
@@ -658,14 +691,7 @@
           continue;
         const rows = extractRows(res.data.data);
         if (!rows || !rows.length) continue;
-        const found = rows.find(function (r) {
-          const jx = r.JXBID || r.jxbid || r.clazzId || "";
-          const sn = r.sportName || r.sportname || "";
-          if (jxbid && jx) return jx === jxbid;
-          if (sportName && sn) return sn === sportName;
-          const kch = r.KCH || r.kch || "";
-          return kch === code || (kch && String(kch).indexOf(code) !== -1);
-        });
+        const found = courseSelected(rows, code, jxbid, sportName);
         if (found) {
           log(
             "\u2714 \u5DF2\u9A8C\u8BC1: " +
@@ -702,17 +728,10 @@
       return { course: courses[idx], idx };
     }
     function releaseClaim(code) {
-      claimed = claimed.filter(function (c) {
-        return c !== code;
-      });
+      claimed = releaseClaimed(claimed, code);
     }
     function skipRemainingCourses() {
-      for (let i = 0; i < courses.length; i++) {
-        const c = courses[i];
-        if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
-          skipped.push(c.code);
-        }
-      }
+      markRemainingSkipped(courses, grabbed, skipped);
     }
     async function grabOneCourse(target, workerId) {
       const wTag = "[W" + workerId + "] ";
@@ -783,11 +802,7 @@
                   continue;
                 }
                 const want = target.volunteer || volunteer;
-                chosenVolunteer = volList.some(function (v) {
-                  return v.grade === want;
-                })
-                  ? want
-                  : volList[0].grade;
+                chosenVolunteer = pickVolunteer(volList, want);
               }
               const result = await addCourse(
                 section,
@@ -851,7 +866,7 @@
                     wTag +
                       "\u2705 " +
                       target.code +
-                      " \u62A2\u8BFE\u6210\u529F\uFF01",
+                      " \u5DF2\u9009\u4E0A\uFF01",
                     "success",
                   );
                   grabbed.push(target.code);
@@ -867,7 +882,7 @@
                         target.code +
                         " " +
                         (target.name || "") +
-                        " \u62A2\u8BFE\u6210\u529F\uFF01",
+                        " \u5DF2\u9009\u4E0A\uFF01",
                       duration: 8e3,
                       showClose: true,
                     });
@@ -1055,7 +1070,7 @@
         })
         .join("");
       log(
-        "\u{1F680} \u5F00\u59CB\u62A2\u8BFE\uFF0C\u5171 " +
+        "\u{1F680} \u5F00\u59CB\uFF0C\u5171 " +
           courses.length +
           " \u95E8\uFF0C" +
           concurNum +
@@ -1171,7 +1186,7 @@
         </select>
     </div>
     <div class="clrt-row clrt-row-sm">
-        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">\u25B6 \u5F00\u59CB\u62A2\u8BFE</button>
+        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">\u25B6 \u5F00\u59CB</button>
         <button id="clrt-btn-stop"  class="clrt-btn clrt-btn-stop" style="display:none">\u23F9 \u505C\u6B62</button>
         <button id="clrt-btn-skip"  class="clrt-btn clrt-btn-warn" style="display:none">\u23ED \u8DF3\u8FC7\u5F53\u524D</button>
     </div>
@@ -1430,7 +1445,7 @@
         if (running) {
           if (
             !confirm(
-              "\u6B63\u5728\u62A2\u8BFE\u4E2D\uFF0C\u786E\u5B9A\u5173\u95ED\u9762\u677F\u5417\uFF1F",
+              "Celeritas \u6B63\u5728\u8FD0\u884C\uFF0C\u786E\u5B9A\u5173\u95ED\u9762\u677F\u5417\uFF1F",
             )
           )
             return;
@@ -1445,7 +1460,7 @@
       const btn = document.createElement("button");
       btn.id = "clrt-reopen";
       btn.textContent = "\u26A1";
-      btn.title = "\u6253\u5F00\u62A2\u8BFE\u52A9\u624B";
+      btn.title = "\u6253\u5F00 Celeritas";
       btn.addEventListener("click", function () {
         byId(PANEL_ID).style.display = "";
         this.remove();
@@ -1471,14 +1486,14 @@
       if (volSel) volSel.value = String(volunteer);
       updateTypeHint();
       log(
-        "\u2705 \u62A2\u8BFE\u52A9\u624B\u5DF2\u5C31\u7EEA | \u5171 " +
+        "\u2705 Celeritas \u5DF2\u5C31\u7EEA | \u5171 " +
           courses.length +
           " \u95E8\u8BFE\u7A0B",
       );
       document.addEventListener("visibilitychange", function () {
         if (document.hidden && running) {
           log(
-            "\u26A0\uFE0F \u9875\u9762\u5DF2\u9690\u85CF\uFF01\u6D4F\u89C8\u5668\u53EF\u80FD\u964D\u9891\u5B9A\u65F6\u5668\u5F71\u54CD\u62A2\u8BFE\u901F\u5EA6\uFF0C\u8BF7\u4FDD\u6301\u6B64\u6807\u7B7E\u9875\u53EF\u89C1",
+            "\u26A0\uFE0F \u9875\u9762\u5DF2\u9690\u85CF\uFF01\u6D4F\u89C8\u5668\u53EF\u80FD\u964D\u9891\u5B9A\u65F6\u5668\u5F71\u54CD\u8FD0\u884C\u901F\u5EA6\uFF0C\u8BF7\u4FDD\u6301\u6B64\u6807\u7B7E\u9875\u53EF\u89C1",
             "warn",
           );
         }
