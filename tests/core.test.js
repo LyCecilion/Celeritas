@@ -4,14 +4,17 @@ import {
     backoffDelay,
     courseListed,
     courseSelected,
+    effectiveConcurrency,
     extractRows,
     extractSections,
     findNextCourseIndex,
     findRemaining,
     markRemainingSkipped,
+    needsVolunteer,
     normalizeCourse,
     pickVolunteer,
     releaseClaimed,
+    roundFromBatchName,
 } from "../src/core.js";
 
 describe("extractRows", () => {
@@ -191,5 +194,37 @@ describe("courseSelected", () => {
     it("falls back to any section of the course", () => {
         expect(courseSelected(rows(), "B", "", "")).toBe(true);
         expect(courseSelected(rows(), "C", "", "")).toBe(false);
+    });
+});
+
+describe("roundFromBatchName", () => {
+    it("detects the round from real batch names", () => {
+        expect(roundFromBatchName("第一轮通识选修课程（2025级）")).toBe("first");
+        expect(roundFromBatchName("第一轮方案内课程（2025级）")).toBe("first");
+        expect(roundFromBatchName("第二轮通识选修课程（2025级）")).toBe("second");
+        expect(roundFromBatchName("第二轮方案内课程（2025级）")).toBe("second");
+    });
+
+    it("returns null for unknown names", () => {
+        expect(roundFromBatchName(undefined)).toBe(null);
+        expect(roundFromBatchName("")).toBe(null);
+        expect(roundFromBatchName("某批次")).toBe(null);
+    });
+});
+
+describe("effectiveConcurrency", () => {
+    it("uses the configured value only in the second round", () => {
+        expect(effectiveConcurrency("second", 3)).toBe(3);
+        expect(effectiveConcurrency("first", 3)).toBe(1);
+        expect(effectiveConcurrency(null, 3)).toBe(1);
+    });
+});
+
+describe("needsVolunteer", () => {
+    it("only applies to first-round electives", () => {
+        expect(needsVolunteer("first", "XGKC")).toBe(true);
+        expect(needsVolunteer("first", "TYKC")).toBe(false);
+        expect(needsVolunteer("second", "XGKC")).toBe(false);
+        expect(needsVolunteer(null, "XGKC")).toBe(false);
     });
 });

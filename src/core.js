@@ -147,6 +147,38 @@ export function courseSelected(rows, code, jxbid, sportName) {
 }
 
 /**
+ * Round of a batch derived from its name: "first" / "second", or null when unknown.
+ * @param {string | undefined} batchName
+ * @returns {string | null}
+ */
+export function roundFromBatchName(batchName) {
+    if (!batchName) return null;
+    if (batchName.includes("第二轮")) return "second";
+    if (batchName.includes("第一轮")) return "first";
+    return null;
+}
+
+/**
+ * Effective concurrency: the configured value applies only in the second round (the hand-speed round).
+ * @param {string | null} round
+ * @param {number} configured
+ * @returns {number}
+ */
+export function effectiveConcurrency(round, configured) {
+    return round === "second" ? configured : 1;
+}
+
+/**
+ * Whether the volunteer selector applies: first-round electives only.
+ * @param {string | null} round
+ * @param {string} type
+ * @returns {boolean}
+ */
+export function needsVolunteer(round, type) {
+    return round === "first" && type === "XGKC";
+}
+
+/**
  * Normalize a legacy stored course: no jxbid means "any section"; fill type/sportName/volunteer defaults.
  * @param {Record<string, unknown>} c
  * @returns {Record<string, unknown>}
