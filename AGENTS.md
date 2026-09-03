@@ -64,6 +64,7 @@ Never skip: every PR must be green on CI before it is merged.
 - Hotfixes: `hotfix/<name>` from `main` → PR to `main`, then merge back to `develop`.
 - Use merge commits (`--merge`), never squash or fast-forward.
 - Delete branches after they are merged.
+- `main` and `develop` are branch-protected: the `quality` CI check must pass before any merge.
 
 ## Commits
 

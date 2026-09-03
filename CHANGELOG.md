@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- README 使用指南与 FAQ。
+- 状态机纯逻辑抽取（释放认领、剩余跳过、志愿选择、已选校验）及单元测试。
+
+### Changed
+
+- 面板文案全面以 Celeritas 品牌呈现。
+- GitHub Actions 升级至最新主版本（checkout v7 / setup-node v7 / action-setup v6）。
+
 ## [0.1.0] - 2026-09-03
 
 ### Added
