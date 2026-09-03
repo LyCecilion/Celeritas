@@ -44,7 +44,7 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           awk -v ver="${VERSION}" '
-            $0 == "## [" ver "]" { in_section = 1; next }
+            $0 ~ "^## \\[" ver "\\]" { in_section = 1; next }
             /^## \[/ { if (in_section) exit }
             in_section { print }
           ' CHANGELOG.md > notes.md
