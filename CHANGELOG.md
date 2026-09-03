@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Vitest 单元测试，覆盖核心纯函数（API 解析、退避计算、课程认领、旧数据兼容）。
+- GitHub Actions CI：格式、lint、类型检查、测试、构建产物一致性校验。
+- JSDoc 类型检查（`// @ts-check` + jsconfig）。
+
+### Changed
+
+- 源码拆分至 `src/`，`celeritas.user.js` 成为 esbuild 构建产物。
+- `@version` 由构建时从 package.json 注入，版本号单一来源。
+- ESLint 升级为 `@eslint/js` recommended + `globals`。
+- package.json 补充 `repository` / `bugs` / `keywords` / `packageManager` 字段。
+- 代码注释统一为英文。
+
 ## [0.1.0] - 2026-09-03
 
 ### Added

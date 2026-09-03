@@ -8,6 +8,8 @@
 
 _**✨ On the Roche Limit. ⚡**_
 
+[![CI](https://github.com/LyCecilion/Celeritas/actions/workflows/ci.yml/badge.svg)](https://github.com/LyCecilion/Celeritas/actions/workflows/ci.yml)
+
 </div>
 
 > [!WARNING]
@@ -36,7 +38,7 @@ Celeritas 是诞生于「洛希极限」边界的少女，负责在教务系统�
 
 ## 🚀 Quick Start
 
-将 [`celeritas.user.js`](celeritas.user.js) 导入到 Tampermonkey 即可。
+将 [`celeritas.user.js`](celeritas.user.js) 导入到 Tampermonkey 即可（`celeritas.user.js` 为构建产物，改动源码后运行 `pnpm build`）。
 
 ## 🔧 How It Works
 
@@ -51,22 +53,40 @@ Celeritas/
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE
-├── package.json          npm 元数据
-├── eslint.config.js      ESLint 配置
-├── .prettierrc           Prettier 配置
-├── .editorconfig         编辑器配置
+├── package.json            npm 元数据
+├── eslint.config.mjs       ESLint 配置
+├── jsconfig.json           JSDoc 类型检查配置
+├── .prettierrc             Prettier 配置
+├── .editorconfig           编辑器配置
 ├── .gitignore
-└── celeritas.user.js     Celeritas
+├── src/                    源码（main.js + core.js）
+├── tests/                  Vitest 单元测试
+├── scripts/                构建脚本
+├── .github/workflows/      CI 工作流
+└── celeritas.user.js       构建产物（发布用）
 ```
 
 ## 🛠 Development
 
 ```bash
-pnpm install     # 安装 ESLint 和 Prettier
-pnpm lint        # 检查代码
-pnpm format      # 格式化代码
-pnpm check       # 格式化和检查代码
+pnpm install             # 安装依赖
+pnpm build               # 构建 celeritas.user.js（@version 取自 package.json）
+pnpm test                # 单元测试
+pnpm typecheck           # 类型检查（core.js 与测试）
+pnpm lint                # ESLint
+pnpm format              # 格式化
+pnpm check               # 格式 + lint + 类型 + 测试
+pnpm check:artifact      # 重建并校验产物未过期
 ```
+
+### 🌿 Branching
+
+开发遵循 [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)：
+
+- `main` 仅接收 `release/*` 分支的 PR，永远是发布版本。
+- `develop` 为集成主干，功能合入的目标。
+- 新功能从 `develop` 分出 `feature/*` 分支，完成后 PR 回 `develop`。
+- 发版时从 `develop` 分出 `release/vX.Y.Z`，合并进 `main` 并打 tag。
 
 ## 📄 License
 
