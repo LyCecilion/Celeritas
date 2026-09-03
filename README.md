@@ -88,6 +88,14 @@ pnpm check:artifact      # 重建并校验产物未过期
 - 新功能从 `develop` 分出 `feature/*` 分支，完成后 PR 回 `develop`。
 - 发版时从 `develop` 分出 `release/vX.Y.Z`，合并进 `main` 并打 tag。
 
+### 🏷 Releasing
+
+1. 从 `develop` 分出 `release/vX.Y.Z`。
+2. 更新 CHANGELOG：把 `[Unreleased]` 整理进 `[vX.Y.Z]` 并写上日期；提升 `package.json` 的 `version`，运行 `pnpm build` 重新生成产物（`@version` 自动跟随）。
+3. PR 合并 `release/vX.Y.Z` 到 `main`。
+4. 在 `main` 上打 tag `vX.Y.Z` 并推送——Release 工作流会自动校验版本、跑检查、构建并创建 GitHub Release（附件为 `celeritas.user.js`）。
+5. 把 `release/vX.Y.Z` 合并回 `develop`，然后删除该分支。
+
 ## 📄 License
 
 [MIT LICENSE](LICENSE).
