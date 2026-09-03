@@ -109,6 +109,7 @@ import {
     padding: 7px 14px; border: none; border-radius: 9px; cursor: pointer;
     font-size: 12px; font-weight: 600; white-space: nowrap; color: #fff;
     transition: all .15s; box-shadow: 0 3px 10px rgba(38,85,200,.28);
+    flex-shrink: 0;
 }
 .clrt-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
 .clrt-btn:active { transform: translateY(0); }
@@ -1131,8 +1132,8 @@ import {
         </select>
     </div>
     <div class="clrt-row">
-        <input id="clrt-input-keyword" class="clrt-input" style="flex:2" placeholder="课程号或关键词，如 24TS2244" maxlength="40">
-        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm">🔍 搜索</button>
+        <input id="clrt-input-keyword" class="clrt-input" style="flex:1;min-width:0" placeholder="课程号或关键词，如 24TS2244" maxlength="40">
+        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm clrt-btn-go">🔍 搜索</button>
     </div>
     <div class="clrt-search-results" id="clrt-search-results" style="display:none"></div>
     <div class="clrt-course-list" id="clrt-course-list"></div>
