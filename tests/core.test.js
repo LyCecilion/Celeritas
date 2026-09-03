@@ -9,8 +9,8 @@ import {
     extractSections,
     findNextCourseIndex,
     findRemaining,
+    isLotteryRound,
     markRemainingSkipped,
-    needsVolunteer,
     normalizeCourse,
     pickVolunteer,
     releaseClaimed,
@@ -212,19 +212,21 @@ describe("roundFromBatchName", () => {
     });
 });
 
-describe("effectiveConcurrency", () => {
-    it("uses the configured value only in the second round", () => {
-        expect(effectiveConcurrency("second", 3)).toBe(3);
-        expect(effectiveConcurrency("first", 3)).toBe(1);
-        expect(effectiveConcurrency(null, 3)).toBe(1);
+describe("isLotteryRound", () => {
+    it("only first-round electives are lottery-based", () => {
+        expect(isLotteryRound("first", "XGKC")).toBe(true);
+        expect(isLotteryRound("first", "TYKC")).toBe(false);
+        expect(isLotteryRound("first", "TJKC")).toBe(false);
+        expect(isLotteryRound("second", "XGKC")).toBe(false);
+        expect(isLotteryRound(null, "XGKC")).toBe(false);
     });
 });
 
-describe("needsVolunteer", () => {
-    it("only applies to first-round electives", () => {
-        expect(needsVolunteer("first", "XGKC")).toBe(true);
-        expect(needsVolunteer("first", "TYKC")).toBe(false);
-        expect(needsVolunteer("second", "XGKC")).toBe(false);
-        expect(needsVolunteer(null, "XGKC")).toBe(false);
+describe("effectiveConcurrency", () => {
+    it("fixes concurrency at 1 only for the lottery round", () => {
+        expect(effectiveConcurrency("first", "XGKC", 3)).toBe(1);
+        expect(effectiveConcurrency("first", "TYKC", 3)).toBe(3);
+        expect(effectiveConcurrency("second", "XGKC", 3)).toBe(3);
+        expect(effectiveConcurrency(null, "XGKC", 3)).toBe(3);
     });
 });

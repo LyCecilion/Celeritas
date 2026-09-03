@@ -159,23 +159,25 @@ export function roundFromBatchName(batchName) {
 }
 
 /**
- * Effective concurrency: the configured value applies only in the second round (the hand-speed round).
- * @param {string | null} round
- * @param {number} configured
- * @returns {number}
- */
-export function effectiveConcurrency(round, configured) {
-    return round === "second" ? configured : 1;
-}
-
-/**
- * Whether the volunteer selector applies: first-round electives only.
+ * Whether the batch runs on lottery (志愿摇号): only first-round electives do.
+ * In-plan courses are first-come-first-served even in the pre-select round, and so is the whole second round.
  * @param {string | null} round
  * @param {string} type
  * @returns {boolean}
  */
-export function needsVolunteer(round, type) {
+export function isLotteryRound(round, type) {
     return round === "first" && type === "XGKC";
+}
+
+/**
+ * Effective concurrency: the configured value applies everywhere except the lottery round (fixed at 1).
+ * @param {string | null} round
+ * @param {string} type
+ * @param {number} configured
+ * @returns {number}
+ */
+export function effectiveConcurrency(round, type, configured) {
+    return isLotteryRound(round, type) ? 1 : configured;
 }
 
 /**
