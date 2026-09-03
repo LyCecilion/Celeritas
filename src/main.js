@@ -1,10 +1,15 @@
 import {
     backoffDelay,
+    courseListed,
+    courseSelected,
     extractRows,
     extractSections,
     findNextCourseIndex,
     findRemaining,
+    markRemainingSkipped,
     normalizeCourse,
+    pickVolunteer,
+    releaseClaimed,
 } from "./core.js";
 
 (function () {
@@ -578,9 +583,7 @@ import {
             const rows = extractRows(res.data.data);
             if (!rows || !rows.length) continue;
 
-            const found = rows.find(function (r) {
-                return r.KCH === code || (r.KCH && r.KCH.indexOf(code) !== -1);
-            });
+            const found = courseListed(rows, code);
             if (found) {
                 log(
                     "✔ 已验证: " + code + " 出现在已选列表（第 " + (i + 1) + " 次查询）",
@@ -621,15 +624,7 @@ import {
             const rows = extractRows(res.data.data);
             if (!rows || !rows.length) continue;
 
-            const found = rows.find(function (r) {
-                const jx = r.JXBID || r.jxbid || r.clazzId || "";
-                const sn = r.sportName || r.sportname || "";
-                if (jxbid && jx) return jx === jxbid; // specific section: exact match
-                if (sportName && sn) return sn === sportName; // specific club: match by name
-                const kch = r.KCH || r.kch || "";
-                // any section: success if any section of the course is already selected
-                return kch === code || (kch && String(kch).indexOf(code) !== -1);
-            });
+            const found = courseSelected(rows, code, jxbid, sportName);
             if (found) {
                 log(
                     "✔ 已验证: " + code + " 出现在已选列表（第 " + (i + 1) + " 次查询）",
@@ -667,18 +662,11 @@ import {
     }
 
     function releaseClaim(code) {
-        claimed = claimed.filter(function (c) {
-            return c !== code;
-        });
+        claimed = releaseClaimed(claimed, code);
     }
 
     function skipRemainingCourses() {
-        for (let i = 0; i < courses.length; i++) {
-            const c = courses[i];
-            if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
-                skipped.push(c.code);
-            }
-        }
+        markRemainingSkipped(courses, grabbed, skipped);
     }
 
     // Grab a single course (called inside a worker; resolves true = success or skipped)
@@ -747,11 +735,7 @@ import {
                                 continue;
                             }
                             const want = target.volunteer || volunteer;
-                            chosenVolunteer = volList.some(function (v) {
-                                return v.grade === want;
-                            })
-                                ? want
-                                : volList[0].grade;
+                            chosenVolunteer = pickVolunteer(volList, want);
                         }
 
                         const result = await addCourse(
@@ -810,7 +794,7 @@ import {
                                       )
                                     : await verifyCourseGrab(target.code);
                             if (verified) {
-                                log(wTag + "✅ " + target.code + " 抢课成功！", "success");
+                                log(wTag + "✅ " + target.code + " 已选上！", "success");
                                 grabbed.push(target.code);
                                 updateProgress();
                                 renderCourseList();
@@ -824,7 +808,7 @@ import {
                                             target.code +
                                             " " +
                                             (target.name || "") +
-                                            " 抢课成功！",
+                                            " 已选上！",
                                         duration: 8000,
                                         showClose: true,
                                     });
@@ -960,7 +944,7 @@ import {
                 return "（" + TYPE_LABELS[t] + " " + typeCount[t] + " 门）";
             })
             .join("");
-        log("🚀 开始抢课，共 " + courses.length + " 门，" + concurNum + " 并发" + extra);
+        log("🚀 开始，共 " + courses.length + " 门，" + concurNum + " 并发" + extra);
         beep(true);
 
         const workers = [];
@@ -1071,7 +1055,7 @@ import {
         </select>
     </div>
     <div class="clrt-row clrt-row-sm">
-        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">▶ 开始抢课</button>
+        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">▶ 开始</button>
         <button id="clrt-btn-stop"  class="clrt-btn clrt-btn-stop" style="display:none">⏹ 停止</button>
         <button id="clrt-btn-skip"  class="clrt-btn clrt-btn-warn" style="display:none">⏭ 跳过当前</button>
     </div>
@@ -1349,7 +1333,7 @@ import {
 
         byId("clrt-btn-close").addEventListener("click", function () {
             if (running) {
-                if (!confirm("正在抢课中，确定关闭面板吗？")) return;
+                if (!confirm("Celeritas 正在运行，确定关闭面板吗？")) return;
                 stopGrab();
             }
             byId(PANEL_ID).style.display = "none";
@@ -1363,7 +1347,7 @@ import {
         const btn = document.createElement("button");
         btn.id = "clrt-reopen";
         btn.textContent = "⚡";
-        btn.title = "打开抢课助手";
+        btn.title = "打开 Celeritas";
         btn.addEventListener("click", function () {
             byId(PANEL_ID).style.display = "";
             this.remove();
@@ -1393,12 +1377,12 @@ import {
         if (volSel) volSel.value = String(volunteer);
         updateTypeHint();
 
-        log("✅ 抢课助手已就绪 | 共 " + courses.length + " 门课程");
+        log("✅ Celeritas 已就绪 | 共 " + courses.length + " 门课程");
 
         // Listen for page visibility: browsers throttle setTimeout when hidden, which slows grabbing
         document.addEventListener("visibilitychange", function () {
             if (document.hidden && running) {
-                log("⚠️ 页面已隐藏！浏览器可能降频定时器影响抢课速度，请保持此标签页可见", "warn");
+                log("⚠️ 页面已隐藏！浏览器可能降频定时器影响运行速度，请保持此标签页可见", "warn");
             }
         });
     }

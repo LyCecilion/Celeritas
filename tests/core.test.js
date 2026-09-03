@@ -2,11 +2,16 @@
 import { describe, expect, it } from "vitest";
 import {
     backoffDelay,
+    courseListed,
+    courseSelected,
     extractRows,
     extractSections,
     findNextCourseIndex,
     findRemaining,
+    markRemainingSkipped,
     normalizeCourse,
+    pickVolunteer,
+    releaseClaimed,
 } from "../src/core.js";
 
 describe("extractRows", () => {
@@ -114,5 +119,77 @@ describe("normalizeCourse", () => {
         };
         expect(normalizeCourse(course)).toBe(course);
         expect(normalizeCourse(course)).toEqual(course);
+    });
+});
+
+describe("releaseClaimed", () => {
+    it("removes the released code and keeps the rest", () => {
+        expect(releaseClaimed(["A", "B"], "A")).toEqual(["B"]);
+        expect(releaseClaimed(["A", "B"], "C")).toEqual(["A", "B"]);
+    });
+});
+
+describe("markRemainingSkipped", () => {
+    it("marks every pending course while keeping grabbed ones", () => {
+        const courses = [{ code: "A" }, { code: "B" }, { code: "C" }];
+        const skipped = [];
+        markRemainingSkipped(courses, ["A"], skipped);
+        expect(skipped).toEqual(["B", "C"]);
+    });
+
+    it("does not duplicate already-skipped codes", () => {
+        const courses = [{ code: "A" }, { code: "B" }];
+        const skipped = ["A"];
+        markRemainingSkipped(courses, [], skipped);
+        expect(skipped).toEqual(["A", "B"]);
+    });
+});
+
+describe("pickVolunteer", () => {
+    const volList = () => [{ grade: 1 }, { grade: 2 }, { grade: 3 }];
+
+    it("returns the wanted grade when available", () => {
+        expect(pickVolunteer(volList(), 2)).toBe(2);
+    });
+
+    it("falls back to the first available grade", () => {
+        expect(pickVolunteer(volList(), 5)).toBe(1);
+    });
+});
+
+describe("courseListed", () => {
+    it("matches an exact course code", () => {
+        expect(courseListed([{ KCH: "24TS2244" }], "24TS2244")).toBe(true);
+    });
+
+    it("matches by code prefix", () => {
+        expect(courseListed([{ KCH: "24TS2244-01" }], "24TS2244")).toBe(true);
+    });
+
+    it("does not match unrelated rows", () => {
+        expect(courseListed([{ KCH: "25TS1000" }], "24TS2244")).toBe(false);
+        expect(courseListed([], "24TS2244")).toBe(false);
+    });
+});
+
+describe("courseSelected", () => {
+    const rows = () => [
+        { KCH: "A", JXBID: "a1", sportName: "羽毛球" },
+        { KCH: "B", JXBID: "b1", sportName: "乒乓球" },
+    ];
+
+    it("matches by exact section when a section is specified", () => {
+        expect(courseSelected(rows(), "A", "a1", "")).toBe(true);
+        expect(courseSelected(rows(), "A", "zz", "")).toBe(false);
+    });
+
+    it("matches a specific club by name", () => {
+        expect(courseSelected(rows(), "A", "", "乒乓球")).toBe(true);
+        expect(courseSelected(rows(), "A", "", "足球")).toBe(false);
+    });
+
+    it("falls back to any section of the course", () => {
+        expect(courseSelected(rows(), "B", "", "")).toBe(true);
+        expect(courseSelected(rows(), "C", "", "")).toBe(false);
     });
 });
