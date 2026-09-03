@@ -7,8 +7,8 @@ import {
     extractSections,
     findNextCourseIndex,
     findRemaining,
+    isLotteryRound,
     markRemainingSkipped,
-    needsVolunteer,
     normalizeCourse,
     pickVolunteer,
     releaseClaimed,
@@ -88,7 +88,7 @@ import {
 }
 .clrt-chip-type { background: #ecf3ff; color: #2655c8; }
 .clrt-chip-round { background: #fff7e6; color: #b26a00; }
-.clrt-chip-round.clrt-chip-second { background: #ffecef; color: #c8263c; }
+.clrt-chip-round.clrt-chip-fast { background: #ffecef; color: #c8263c; }
 .clrt-input {
     flex: 1; padding: 7px 11px; border: 1px solid #dce3f2; border-radius: 9px;
     font-size: 12px; outline: none; box-sizing: border-box; background: #fbfcff;
@@ -495,13 +495,17 @@ import {
         const volRow = byId("clrt-volunteer-row");
         const concurRow = byId("clrt-concur-row");
         const chip = byId("clrt-chip-round");
-        const isVol = needsVolunteer(pageRound, courseType);
-        if (volRow) volRow.style.display = isVol ? "" : "none";
-        if (concurRow) concurRow.style.display = pageRound === "second" ? "" : "none";
+        const lottery = isLotteryRound(pageRound, courseType);
+        if (volRow) volRow.style.display = lottery ? "" : "none";
+        if (concurRow) concurRow.style.display = lottery ? "none" : "";
         if (chip) {
             chip.style.display = pageRound ? "" : "none";
-            chip.textContent = pageRound === "second" ? "⚡ 第二轮 · 正选" : "🎲 第一轮 · 摇号";
-            chip.classList.toggle("clrt-chip-second", pageRound === "second");
+            chip.textContent = lottery
+                ? "🎲 第一轮 · 志愿摇号"
+                : pageRound === "second"
+                  ? "⚡ 第二轮 · 正选"
+                  : "⚡ 第一轮 · 即选即得";
+            chip.classList.toggle("clrt-chip-fast", !!pageRound && !lottery);
         }
     }
 
@@ -1040,10 +1044,10 @@ import {
                 return "（" + TYPE_LABELS[t] + " " + typeCount[t] + " 门）";
             })
             .join("");
-        const concurrency = effectiveConcurrency(pageRound, concurNum);
+        const concurrency = effectiveConcurrency(pageRound, courseType, concurNum);
         log("🚀 开始，共 " + courses.length + " 门，" + concurrency + " 并发" + extra);
-        if (pageRound === "first") {
-            log("🎲 第一轮为摇号制，按 1 并发提交志愿", "info");
+        if (isLotteryRound(pageRound, courseType)) {
+            log("🎲 第一轮通识为志愿摇号制，按 1 并发提交志愿", "info");
         }
         beep(true);
 
@@ -1151,7 +1155,7 @@ import {
             <option value="2" selected>2</option>
             <option value="3">3</option>
         </select>
-        <span style="font-size:11px;color:#909399">第二轮正选时生效</span>
+        <span style="font-size:11px;color:#909399">即选即得场次生效</span>
     </div>
     <div class="clrt-row clrt-row-sm" id="clrt-volunteer-row">
         <label style="width:34px">志愿</label>

@@ -96,11 +96,11 @@
     if (batchName.includes("\u7B2C\u4E00\u8F6E")) return "first";
     return null;
   }
-  function effectiveConcurrency(round, configured) {
-    return round === "second" ? configured : 1;
-  }
-  function needsVolunteer(round, type) {
+  function isLotteryRound(round, type) {
     return round === "first" && type === "XGKC";
+  }
+  function effectiveConcurrency(round, type, configured) {
+    return isLotteryRound(round, type) ? 1 : configured;
   }
   function normalizeCourse(c) {
     if (!("jxbid" in c)) {
@@ -187,7 +187,7 @@
 }
 .clrt-chip-type { background: #ecf3ff; color: #2655c8; }
 .clrt-chip-round { background: #fff7e6; color: #b26a00; }
-.clrt-chip-round.clrt-chip-second { background: #ffecef; color: #c8263c; }
+.clrt-chip-round.clrt-chip-fast { background: #ffecef; color: #c8263c; }
 .clrt-input {
     flex: 1; padding: 7px 11px; border: 1px solid #dce3f2; border-radius: 9px;
     font-size: 12px; outline: none; box-sizing: border-box; background: #fbfcff;
@@ -586,17 +586,17 @@
       const volRow = byId("clrt-volunteer-row");
       const concurRow = byId("clrt-concur-row");
       const chip = byId("clrt-chip-round");
-      const isVol = needsVolunteer(pageRound, courseType);
-      if (volRow) volRow.style.display = isVol ? "" : "none";
-      if (concurRow)
-        concurRow.style.display = pageRound === "second" ? "" : "none";
+      const lottery = isLotteryRound(pageRound, courseType);
+      if (volRow) volRow.style.display = lottery ? "" : "none";
+      if (concurRow) concurRow.style.display = lottery ? "none" : "";
       if (chip) {
         chip.style.display = pageRound ? "" : "none";
-        chip.textContent =
-          pageRound === "second"
+        chip.textContent = lottery
+          ? "\u{1F3B2} \u7B2C\u4E00\u8F6E \xB7 \u5FD7\u613F\u6447\u53F7"
+          : pageRound === "second"
             ? "\u26A1 \u7B2C\u4E8C\u8F6E \xB7 \u6B63\u9009"
-            : "\u{1F3B2} \u7B2C\u4E00\u8F6E \xB7 \u6447\u53F7";
-        chip.classList.toggle("clrt-chip-second", pageRound === "second");
+            : "\u26A1 \u7B2C\u4E00\u8F6E \xB7 \u5373\u9009\u5373\u5F97";
+        chip.classList.toggle("clrt-chip-fast", !!pageRound && !lottery);
       }
     }
     function watchPageContext() {
@@ -1185,7 +1185,11 @@
           );
         })
         .join("");
-      const concurrency = effectiveConcurrency(pageRound, concurNum);
+      const concurrency = effectiveConcurrency(
+        pageRound,
+        courseType,
+        concurNum,
+      );
       log(
         "\u{1F680} \u5F00\u59CB\uFF0C\u5171 " +
           courses.length +
@@ -1194,9 +1198,9 @@
           " \u5E76\u53D1" +
           extra,
       );
-      if (pageRound === "first") {
+      if (isLotteryRound(pageRound, courseType)) {
         log(
-          "\u{1F3B2} \u7B2C\u4E00\u8F6E\u4E3A\u6447\u53F7\u5236\uFF0C\u6309 1 \u5E76\u53D1\u63D0\u4EA4\u5FD7\u613F",
+          "\u{1F3B2} \u7B2C\u4E00\u8F6E\u901A\u8BC6\u4E3A\u5FD7\u613F\u6447\u53F7\u5236\uFF0C\u6309 1 \u5E76\u53D1\u63D0\u4EA4\u5FD7\u613F",
           "info",
         );
       }
@@ -1305,7 +1309,7 @@
             <option value="2" selected>2</option>
             <option value="3">3</option>
         </select>
-        <span style="font-size:11px;color:#909399">\u7B2C\u4E8C\u8F6E\u6B63\u9009\u65F6\u751F\u6548</span>
+        <span style="font-size:11px;color:#909399">\u5373\u9009\u5373\u5F97\u573A\u6B21\u751F\u6548</span>
     </div>
     <div class="clrt-row clrt-row-sm" id="clrt-volunteer-row">
         <label style="width:34px">\u5FD7\u613F</label>
