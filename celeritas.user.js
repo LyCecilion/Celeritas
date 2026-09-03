@@ -208,6 +208,7 @@
     padding: 7px 14px; border: none; border-radius: 9px; cursor: pointer;
     font-size: 12px; font-weight: 600; white-space: nowrap; color: #fff;
     transition: all .15s; box-shadow: 0 3px 10px rgba(38,85,200,.28);
+    flex-shrink: 0;
 }
 .clrt-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
 .clrt-btn:active { transform: translateY(0); }
@@ -1285,8 +1286,8 @@
         </select>
     </div>
     <div class="clrt-row">
-        <input id="clrt-input-keyword" class="clrt-input" style="flex:2" placeholder="\u8BFE\u7A0B\u53F7\u6216\u5173\u952E\u8BCD\uFF0C\u5982 24TS2244" maxlength="40">
-        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm">\u{1F50D} \u641C\u7D22</button>
+        <input id="clrt-input-keyword" class="clrt-input" style="flex:1;min-width:0" placeholder="\u8BFE\u7A0B\u53F7\u6216\u5173\u952E\u8BCD\uFF0C\u5982 24TS2244" maxlength="40">
+        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm clrt-btn-go">\u{1F50D} \u641C\u7D22</button>
     </div>
     <div class="clrt-search-results" id="clrt-search-results" style="display:none"></div>
     <div class="clrt-course-list" id="clrt-course-list"></div>
