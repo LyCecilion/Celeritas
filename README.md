@@ -51,6 +51,7 @@ Celeritas 是诞生于「洛希极限」边界的少女，负责在教务系统�
 ```text
 Celeritas/
 ├── README.md
+├── AGENTS.md               Agent 协作约定（流程与规范）
 ├── CHANGELOG.md
 ├── LICENSE
 ├── package.json            npm 元数据
