@@ -1251,9 +1251,7 @@ import {
                     });
                     showSearchResults(html);
                     // close button
-                    document
-                        .getElementById("clrt-search-close")
-                        .addEventListener("click", hideSearchResults);
+                    byId("clrt-search-close").addEventListener("click", hideSearchResults);
                     // add buttons
                     resultsEl.querySelectorAll(".clrt-search-add").forEach(function (btn) {
                         btn.addEventListener("click", function () {

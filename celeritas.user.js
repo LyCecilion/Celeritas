@@ -1332,9 +1332,10 @@
                 "</button></div>";
             });
             showSearchResults(html);
-            document
-              .getElementById("clrt-search-close")
-              .addEventListener("click", hideSearchResults);
+            byId("clrt-search-close").addEventListener(
+              "click",
+              hideSearchResults,
+            );
             resultsEl
               .querySelectorAll(".clrt-search-add")
               .forEach(function (btn) {
