@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Celeritas
 // @namespace    celeritas
-// @version      0.1.0
+// @version      0.2.0
 // @description  On the Roche Limit.
 // @author       LyCecilion
 // @match        https://xk.xidian.edu.cn/xsxk/elective/grablessons*
@@ -55,6 +55,53 @@
       (c) => !grabbed.includes(c.code) && !skipped.includes(c.code),
     );
   }
+  function releaseClaimed(claimed, code) {
+    return claimed.filter(function (c) {
+      return c !== code;
+    });
+  }
+  function markRemainingSkipped(courses, grabbed, skipped) {
+    for (let i = 0; i < courses.length; i++) {
+      const c = courses[i];
+      if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
+        skipped.push(c.code);
+      }
+    }
+  }
+  function pickVolunteer(volList, want) {
+    return volList.some(function (v) {
+      return v.grade === want;
+    })
+      ? want
+      : volList[0].grade;
+  }
+  function courseListed(rows, code) {
+    return rows.some(function (r) {
+      return r.KCH === code || (r.KCH && String(r.KCH).indexOf(code) !== -1);
+    });
+  }
+  function courseSelected(rows, code, jxbid, sportName) {
+    return rows.some(function (r) {
+      const jx = r.JXBID || r.jxbid || r.clazzId || "";
+      const sn = r.sportName || r.sportname || "";
+      if (jxbid && jx) return jx === jxbid;
+      if (sportName && sn) return sn === sportName;
+      const kch = r.KCH || r.kch || "";
+      return kch === code || (kch && String(kch).indexOf(code) !== -1);
+    });
+  }
+  function roundFromBatchName(batchName) {
+    if (!batchName) return null;
+    if (batchName.includes("\u7B2C\u4E8C\u8F6E")) return "second";
+    if (batchName.includes("\u7B2C\u4E00\u8F6E")) return "first";
+    return null;
+  }
+  function isLotteryRound(round, type) {
+    return round === "first" && type === "XGKC";
+  }
+  function effectiveConcurrency(round, type, configured) {
+    return isLotteryRound(round, type) ? 1 : configured;
+  }
   function normalizeCourse(c) {
     if (!("jxbid" in c)) {
       c.jxbid = null;
@@ -88,17 +135,12 @@
       TYKC: "\u4F53\u80B2\u4FF1\u4E50\u90E8",
       TJKC: "\u63A8\u8350\u73ED\u7EA7\u8BFE\u7A0B",
     };
-    const TYPE_PAGE_HINT = {
-      XGKC: "\u901A\u8BC6\u9009\u4FEE\u5728\u901A\u8BC6\u9009\u4FEE\u8BFE\u7A0B\u9875\u9762",
-      TYKC: "\u4F53\u80B2\u4FF1\u4E50\u90E8\u5728\u65B9\u6848\u5185\u8BFE\u7A0B\u9875\u9762",
-      TJKC: "\u63A8\u8350\u73ED\u7EA7\u8BFE\u7A0B\u5728\u65B9\u6848\u5185\u8BFE\u7A0B\u9875\u9762",
-    };
     const TYPE_PLACEHOLDER = {
       XGKC: "\u8BFE\u7A0B\u53F7\u6216\u5173\u952E\u8BCD\uFF0C\u5982 24TS2244",
       TYKC: "\u8BFE\u7A0B\u540D\u6216\u4FF1\u4E50\u90E8\uFF0C\u5982 \u7FBD\u6BDB\u7403",
       TJKC: "\u8BFE\u7A0B\u540D\u6216\u5173\u952E\u8BCD\uFF0C\u5982 \u9AD8\u7EA7\u5199\u4F5C",
     };
-    const TYPE_TAG = { TYKC: "\u4F53", TJKC: "\u63A8" };
+    const TYPE_TAG = { XGKC: "\u901A", TYKC: "\u4F53", TJKC: "\u63A8" };
     const VOLUNTEER_NAMES = {
       1: "\u7B2C\u4E00\u5FD7\u613F",
       2: "\u7B2C\u4E8C\u5FD7\u613F",
@@ -110,125 +152,153 @@
       const css = `
 #${PANEL_ID} {
     position: fixed; right: 20px; top: 100px; z-index: 99999;
-    width: 340px; max-height: 85vh;
-    background: #fff; border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.1);
+    width: 360px; max-height: 86vh;
+    background: rgba(255,255,255,.97);
+    border: 1px solid rgba(62,116,255,.14);
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(23,55,139,.22), 0 4px 12px rgba(23,55,139,.12);
     font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex; flex-direction: column; overflow: hidden;
     user-select: none;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 .clrt-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 14px; background: linear-gradient(135deg, #2655c8, #1a3f9e);
-    color: #fff; cursor: move; font-weight: 600; font-size: 14px;
+    padding: 11px 14px;
+    background: linear-gradient(135deg, #4a80ff 0%, #2655c8 55%, #1a3f9e 100%);
+    color: #fff; cursor: move; font-weight: 700; font-size: 14px; letter-spacing: .2px;
 }
 .clrt-hdr-btn {
     background: none; border: none; color: #fff; cursor: pointer;
     font-size: 16px; width: 24px; height: 24px; line-height: 24px;
-    text-align: center; border-radius: 4px; margin-left: 2px;
+    text-align: center; border-radius: 6px; margin-left: 2px;
+    transition: background .15s;
 }
-.clrt-hdr-btn:hover { background: rgba(255,255,255,.2); }
+.clrt-hdr-btn:hover { background: rgba(255,255,255,.22); }
 .clrt-body { padding: 12px 14px; overflow-y: auto; flex: 1; }
 .clrt-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
 .clrt-row-sm { margin-bottom: 6px; }
+.clrt-status { display: flex; gap: 6px; margin-bottom: 8px; }
+.clrt-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; line-height: 18px;
+}
+.clrt-chip-type { background: #ecf3ff; color: #2655c8; }
+.clrt-chip-round { background: #fff7e6; color: #b26a00; }
+.clrt-chip-round.clrt-chip-fast { background: #ffecef; color: #c8263c; }
 .clrt-input {
-    flex: 1; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 6px;
-    font-size: 12px; outline: none; box-sizing: border-box;
+    flex: 1; padding: 7px 11px; border: 1px solid #dce3f2; border-radius: 9px;
+    font-size: 12px; outline: none; box-sizing: border-box; background: #fbfcff;
+    transition: border-color .15s, box-shadow .15s;
 }
-.clrt-input:focus { border-color: #2655c8; }
+.clrt-input:focus {
+    border-color: #3d74ff;
+    box-shadow: 0 0 0 3px rgba(61,116,255,.14);
+    background: #fff;
+}
 .clrt-select {
-    padding: 4px 8px; border: 1px solid #dcdfe6; border-radius: 6px;
-    font-size: 12px; outline: none; background: #fff;
+    padding: 5px 8px; border: 1px solid #dce3f2; border-radius: 8px;
+    font-size: 12px; outline: none; background: #fbfcff; color: #303133;
+    transition: border-color .15s;
 }
+.clrt-select:focus { border-color: #3d74ff; }
 .clrt-btn {
-    padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
-    transition: all .15s;
+    padding: 7px 14px; border: none; border-radius: 9px; cursor: pointer;
+    font-size: 12px; font-weight: 600; white-space: nowrap; color: #fff;
+    transition: all .15s; box-shadow: 0 3px 10px rgba(38,85,200,.28);
+    flex-shrink: 0;
 }
-.clrt-btn:hover { transform: translateY(-1px); }
+.clrt-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
 .clrt-btn:active { transform: translateY(0); }
-.clrt-btn-sm { padding: 6px 10px; font-size: 11px; }
-.clrt-btn-go { background: #2655c8; color: #fff; }
-.clrt-btn-go:hover { background: #1a3f9e; }
-.clrt-btn-stop { background: #f56c6c; color: #fff; }
-.clrt-btn-stop:hover { background: #e04545; }
-.clrt-btn-warn { background: #e6a23c; color: #fff; }
-.clrt-btn-warn:hover { background: #cf9236; }
+.clrt-btn-sm { padding: 6px 12px; font-size: 11px; }
+.clrt-btn-go { background: linear-gradient(135deg, #4a80ff, #2655c8); }
+.clrt-btn-stop { background: linear-gradient(135deg, #ff7d6e, #f05050); box-shadow: 0 3px 10px rgba(240,80,80,.3); }
+.clrt-btn-warn { background: linear-gradient(135deg, #f5b04d, #e6a23c); box-shadow: 0 3px 10px rgba(230,162,60,.3); }
 
 .clrt-course-list {
-    border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
-    max-height: 200px; overflow-y: auto; background: #fafbfc;
+    border: 1px solid #e8ecf5; border-radius: 10px; margin-bottom: 8px;
+    max-height: 200px; overflow-y: auto; background: #fafbff;
 }
 .clrt-course-item {
-    display: flex; align-items: center; padding: 7px 10px;
-    border-bottom: 1px solid #ebeef5; cursor: grab; gap: 8px;
+    display: flex; align-items: center; padding: 7px 11px;
+    border-bottom: 1px solid #eef1f8; cursor: grab; gap: 8px;
     transition: background .15s;
 }
 .clrt-course-item:last-child { border-bottom: none; }
-.clrt-course-item:hover { background: #ecf5ff; }
+.clrt-course-item:hover { background: #f0f5ff; }
 .clrt-course-item.clrt-dragging { opacity: .4; background: #f0f2f5; }
 .clrt-course-item.clrt-grabbed { background: #f0f9eb; color: #67c23a; }
 .clrt-course-item.clrt-skipped { background: #fef7e8; color: #e6a23c; }
-.clrt-course-item.clrt-active { background: #ecf5ff; border-left: 3px solid #2655c8; }
+.clrt-course-item.clrt-active { background: #ecf3ff; border-left: 3px solid #3d74ff; }
 .clrt-course-code { font-weight: 700; font-family: monospace; font-size: 13px; min-width: 80px; }
 .clrt-type-tag {
-    background: #409eff; color: #fff; border-radius: 3px;
-    font-size: 10px; padding: 1px 4px; flex-shrink: 0;
+    color: #fff; border-radius: 4px;
+    font-size: 10px; padding: 1px 5px; flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
 }
+.clrt-type-tag-xgkc { background: #409eff; }
+.clrt-type-tag-tykc { background: #67c23a; }
+.clrt-type-tag-tjkc { background: #e6a23c; }
 .clrt-course-name { flex: 1; color: #606266; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clrt-badge {
     display: inline-block; width: 18px; height: 18px; line-height: 18px;
     text-align: center; border-radius: 50%; color: #fff; font-size: 11px;
 }
-.clrt-badge-ok { background: #67c23a; }
+.clrt-badge-ok { background: #34d399; }
 .clrt-badge-skip { background: #e6a23c; }
 .clrt-course-del {
     background: none; border: none; color: #c0c4cc; cursor: pointer;
     font-size: 16px; width: 22px; height: 22px; line-height: 22px; text-align: center;
-    border-radius: 4px; flex-shrink: 0;
+    border-radius: 6px; flex-shrink: 0; transition: color .15s, background .15s;
 }
 .clrt-course-del:hover { color: #f56c6c; background: #fef0f0; }
 
 .clrt-progress-bar {
-    width: 100%; height: 6px; background: #ebeef5; border-radius: 3px;
+    width: 100%; height: 7px; background: #eef1f8; border-radius: 4px;
     margin-bottom: 4px; overflow: hidden;
 }
 .clrt-progress-fill {
-    height: 100%; background: linear-gradient(90deg, #67c23a, #409eff);
-    border-radius: 3px; transition: width .3s; width: 0%;
+    height: 100%; background: linear-gradient(90deg, #34d399, #409eff, #4a80ff);
+    background-size: 200% 100%;
+    border-radius: 4px; transition: width .3s; width: 0%;
 }
 .clrt-progress-text { font-size: 11px; color: #909399; margin-bottom: 6px; }
 
 .clrt-log {
-    background: #1e1e1e; color: #d4d4d4; border-radius: 6px;
+    background: #151a24; color: #d4d4d4; border-radius: 10px;
+    border: 1px solid #232a3a;
     padding: 8px 10px; font-size: 11px; font-family: monospace;
     max-height: 180px; overflow-y: auto; line-height: 1.5;
 }
 .clrt-search-results {
-    border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
-    max-height: 220px; overflow-y: auto; background: #fff;
+    border: 1px solid #e8ecf5; border-radius: 10px; margin-bottom: 8px;
+    max-height: 220px; overflow-y: auto; background: #fafbff;
 }
 .clrt-search-item {
-    display: flex; align-items: center; padding: 6px 10px;
-    border-bottom: 1px solid #f0f0f0; gap: 6px; font-size: 11px;
+    display: flex; align-items: center; padding: 6px 11px;
+    border-bottom: 1px solid #eef1f8; gap: 6px; font-size: 11px;
 }
 .clrt-search-item:last-child { border-bottom: none; }
 .clrt-search-item-main { flex: 1; min-width: 0; }
 .clrt-search-item-code { font-weight: 700; font-family: monospace; font-size: 12px; }
 .clrt-search-item-meta { color: #909399; margin-top: 2px; }
 .clrt-search-item-cap { color: #606266; white-space: nowrap; text-align: right; }
-.clrt-search-item-cap .clrt-cap-left { color: #67c23a; font-weight: 600; }
+.clrt-search-item-cap .clrt-cap-left { color: #34d399; font-weight: 600; }
 .clrt-search-add {
-    background: #2655c8; color: #fff; border: none; border-radius: 4px;
+    background: linear-gradient(135deg, #4a80ff, #2655c8); color: #fff;
+    border: none; border-radius: 6px;
     padding: 3px 10px; cursor: pointer; font-size: 11px; white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(38,85,200,.25);
 }
-.clrt-search-add:hover { background: #1a3f9e; }
-.clrt-search-add:disabled { background: #c0c4cc; cursor: not-allowed; }
+.clrt-search-add:hover { filter: brightness(1.08); }
+.clrt-search-add:disabled { background: #c0c4cc; box-shadow: none; cursor: not-allowed; }
 .clrt-search-empty { padding: 16px; text-align: center; color: #c0c4cc; font-size: 12px; }
 .clrt-search-loading { padding: 12px; text-align: center; color: #909399; font-size: 12px; }
 .clrt-search-hdr {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 4px 10px; font-size: 11px; color: #909399;
+    padding: 5px 11px; font-size: 11px; color: #909399;
 }
 .clrt-search-close {
     background: none; border: none; color: #c0c4cc; cursor: pointer; font-size: 14px;
@@ -244,9 +314,9 @@
 
 #clrt-reopen {
     position: fixed; right: 20px; bottom: 20px; z-index: 99998;
-    width: 42px; height: 42px; border-radius: 50%; border: none;
-    background: #2655c8; color: #fff; font-size: 18px;
-    cursor: pointer; box-shadow: 0 4px 16px rgba(38,85,200,.4);
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #4a80ff, #2655c8); color: #fff; font-size: 19px;
+    cursor: pointer; box-shadow: 0 6px 20px rgba(38,85,200,.45);
     transition: transform .15s;
 }
 #clrt-reopen:hover { transform: scale(1.1); }
@@ -260,6 +330,7 @@
     let concurNum = 2;
     let courseType = "XGKC";
     let volunteer = 1;
+    let pageRound = null;
     let running = false;
     let stopped = false;
     let grabbed = [];
@@ -356,7 +427,11 @@
               "</span>"
             : '<span style="color:#e6a23c;font-size:11px;flex-shrink:0">\u4EFB\u610F\u73ED</span>';
           const typeTag = TYPE_TAG[c.type]
-            ? '<span class="clrt-type-tag">' + TYPE_TAG[c.type] + "</span>"
+            ? '<span class="clrt-type-tag clrt-type-tag-' +
+              String(c.type).toLowerCase() +
+              '">' +
+              TYPE_TAG[c.type] +
+              "</span>"
             : "";
           const isGrabbed = grabbed.includes(c.code);
           const isSkipped = skipped.includes(c.code);
@@ -459,14 +534,91 @@
     }
     function updateTypeHint() {
       const input = byId("clrt-input-keyword");
-      const hint = byId("clrt-type-hint");
+      const chip = byId("clrt-chip-type");
       if (input) {
         input.placeholder =
           TYPE_PLACEHOLDER[courseType] || TYPE_PLACEHOLDER.XGKC;
       }
-      if (hint) {
-        hint.textContent = TYPE_PAGE_HINT[courseType] || TYPE_PAGE_HINT.XGKC;
+      if (chip) {
+        chip.textContent =
+          TYPE_LABELS[courseType] || "\u901A\u8BC6\u9009\u4FEE";
       }
+    }
+    function detectPageContext() {
+      const vue = window.grablessonsVue;
+      if (!vue) return null;
+      const pageType = vue.$data && vue.$data.teachingClassType;
+      const batchName =
+        (vue.lcParam &&
+          vue.lcParam.currentBatch &&
+          vue.lcParam.currentBatch.name) ||
+        "";
+      const type =
+        pageType === "XGKC" || pageType === "TYKC" || pageType === "TJKC"
+          ? pageType
+          : null;
+      return { type, round: roundFromBatchName(batchName) };
+    }
+    function applyPageContext(ctx) {
+      if (!ctx) return;
+      if (ctx.type && ctx.type !== courseType) {
+        courseType = ctx.type;
+        saveConfig();
+        updateTypeHint();
+        const roundText =
+          ctx.round === "first"
+            ? " \xB7 \u7B2C\u4E00\u8F6E"
+            : ctx.round === "second"
+              ? " \xB7 \u7B2C\u4E8C\u8F6E"
+              : "";
+        log(
+          "\u{1F50E} \u81EA\u52A8\u8BC6\u522B: " +
+            TYPE_LABELS[courseType] +
+            roundText,
+          "info",
+        );
+      }
+      if (ctx.round !== pageRound) {
+        pageRound = ctx.round;
+        updateRoundUI();
+      }
+    }
+    function updateRoundUI() {
+      const volRow = byId("clrt-volunteer-row");
+      const concurRow = byId("clrt-concur-row");
+      const chip = byId("clrt-chip-round");
+      const lottery = isLotteryRound(pageRound, courseType);
+      if (volRow) volRow.style.display = lottery ? "" : "none";
+      if (concurRow) concurRow.style.display = lottery ? "none" : "";
+      if (chip) {
+        chip.style.display = pageRound ? "" : "none";
+        chip.textContent = lottery
+          ? "\u{1F3B2} \u7B2C\u4E00\u8F6E \xB7 \u5FD7\u613F\u6447\u53F7"
+          : pageRound === "second"
+            ? "\u26A1 \u7B2C\u4E8C\u8F6E \xB7 \u6B63\u9009"
+            : "\u26A1 \u7B2C\u4E00\u8F6E \xB7 \u5373\u9009\u5373\u5F97";
+        chip.classList.toggle("clrt-chip-fast", !!pageRound && !lottery);
+      }
+    }
+    function watchPageContext() {
+      const vue = window.grablessonsVue;
+      if (!vue) return;
+      try {
+        vue.$watch(
+          function () {
+            const data = vue.$data;
+            const batch = vue.lcParam && vue.lcParam.currentBatch;
+            return (
+              (data && data.teachingClassType) +
+              "|" +
+              ((batch && batch.name) || "")
+            );
+          },
+          function () {
+            applyPageContext(detectPageContext());
+          },
+        );
+      } catch (_) {}
     }
     function wait(ms) {
       return new Promise((r) => setTimeout(r, ms));
@@ -611,9 +763,7 @@
           continue;
         const rows = extractRows(res.data.data);
         if (!rows || !rows.length) continue;
-        const found = rows.find(function (r) {
-          return r.KCH === code || (r.KCH && r.KCH.indexOf(code) !== -1);
-        });
+        const found = courseListed(rows, code);
         if (found) {
           log(
             "\u2714 \u5DF2\u9A8C\u8BC1: " +
@@ -658,14 +808,7 @@
           continue;
         const rows = extractRows(res.data.data);
         if (!rows || !rows.length) continue;
-        const found = rows.find(function (r) {
-          const jx = r.JXBID || r.jxbid || r.clazzId || "";
-          const sn = r.sportName || r.sportname || "";
-          if (jxbid && jx) return jx === jxbid;
-          if (sportName && sn) return sn === sportName;
-          const kch = r.KCH || r.kch || "";
-          return kch === code || (kch && String(kch).indexOf(code) !== -1);
-        });
+        const found = courseSelected(rows, code, jxbid, sportName);
         if (found) {
           log(
             "\u2714 \u5DF2\u9A8C\u8BC1: " +
@@ -702,17 +845,10 @@
       return { course: courses[idx], idx };
     }
     function releaseClaim(code) {
-      claimed = claimed.filter(function (c) {
-        return c !== code;
-      });
+      claimed = releaseClaimed(claimed, code);
     }
     function skipRemainingCourses() {
-      for (let i = 0; i < courses.length; i++) {
-        const c = courses[i];
-        if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
-          skipped.push(c.code);
-        }
-      }
+      markRemainingSkipped(courses, grabbed, skipped);
     }
     async function grabOneCourse(target, workerId) {
       const wTag = "[W" + workerId + "] ";
@@ -783,11 +919,7 @@
                   continue;
                 }
                 const want = target.volunteer || volunteer;
-                chosenVolunteer = volList.some(function (v) {
-                  return v.grade === want;
-                })
-                  ? want
-                  : volList[0].grade;
+                chosenVolunteer = pickVolunteer(volList, want);
               }
               const result = await addCourse(
                 section,
@@ -851,7 +983,7 @@
                     wTag +
                       "\u2705 " +
                       target.code +
-                      " \u62A2\u8BFE\u6210\u529F\uFF01",
+                      " \u5DF2\u9009\u4E0A\uFF01",
                     "success",
                   );
                   grabbed.push(target.code);
@@ -867,7 +999,7 @@
                         target.code +
                         " " +
                         (target.name || "") +
-                        " \u62A2\u8BFE\u6210\u529F\uFF01",
+                        " \u5DF2\u9009\u4E0A\uFF01",
                       duration: 8e3,
                       showClose: true,
                     });
@@ -1054,17 +1186,28 @@
           );
         })
         .join("");
+      const concurrency = effectiveConcurrency(
+        pageRound,
+        courseType,
+        concurNum,
+      );
       log(
-        "\u{1F680} \u5F00\u59CB\u62A2\u8BFE\uFF0C\u5171 " +
+        "\u{1F680} \u5F00\u59CB\uFF0C\u5171 " +
           courses.length +
           " \u95E8\uFF0C" +
-          concurNum +
+          concurrency +
           " \u5E76\u53D1" +
           extra,
       );
+      if (isLotteryRound(pageRound, courseType)) {
+        log(
+          "\u{1F3B2} \u7B2C\u4E00\u8F6E\u901A\u8BC6\u4E3A\u5FD7\u613F\u6447\u53F7\u5236\uFF0C\u6309 1 \u5E76\u53D1\u63D0\u4EA4\u5FD7\u613F",
+          "info",
+        );
+      }
       beep(true);
       const workers = [];
-      for (let i = 0; i < concurNum; i++) {
+      for (let i = 0; i < concurrency; i++) {
         workers.push(worker(i + 1));
       }
       Promise.all(workers).then(function () {
@@ -1130,6 +1273,10 @@
     </span>
 </div>
 <div class="clrt-body" id="clrt-body">
+    <div class="clrt-status">
+        <span id="clrt-chip-type" class="clrt-chip clrt-chip-type"></span>
+        <span id="clrt-chip-round" class="clrt-chip clrt-chip-round" style="display:none"></span>
+    </div>
     <div class="clrt-row clrt-row-sm">
         <label>\u7C7B\u578B</label>
         <select id="clrt-type" class="clrt-select">
@@ -1137,16 +1284,15 @@
             <option value="TYKC">\u4F53\u80B2\u4FF1\u4E50\u90E8</option>
             <option value="TJKC">\u63A8\u8350\u73ED\u7EA7\u8BFE\u7A0B</option>
         </select>
-        <span id="clrt-type-hint" style="font-size:11px;color:#909399"></span>
     </div>
     <div class="clrt-row">
-        <input id="clrt-input-keyword" class="clrt-input" style="flex:2" placeholder="\u8BFE\u7A0B\u53F7\u6216\u5173\u952E\u8BCD\uFF0C\u5982 24TS2244" maxlength="40">
-        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm">\u{1F50D} \u641C\u7D22</button>
+        <input id="clrt-input-keyword" class="clrt-input" style="flex:1;min-width:0" placeholder="\u8BFE\u7A0B\u53F7\u6216\u5173\u952E\u8BCD\uFF0C\u5982 24TS2244" maxlength="40">
+        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm clrt-btn-go">\u{1F50D} \u641C\u7D22</button>
     </div>
     <div class="clrt-search-results" id="clrt-search-results" style="display:none"></div>
     <div class="clrt-course-list" id="clrt-course-list"></div>
-    <div class="clrt-row clrt-row-sm">
-        <label>\u95F4\u9694</label>
+    <div class="clrt-row clrt-row-sm" id="clrt-interval-row">
+        <label style="width:34px">\u95F4\u9694</label>
         <select id="clrt-interval" class="clrt-select">
             <option value="400">400ms</option>
             <option value="600">600ms</option>
@@ -1155,23 +1301,30 @@
             <option value="1500">1500ms</option>
             <option value="2000">2000ms</option>
         </select>
-        <label style="margin-left:12px">\u5E76\u53D1</label>
+        <span style="font-size:11px;color:#909399">\u8FDE\u7EED\u5931\u8D25\u81EA\u52A8\u9000\u907F</span>
+    </div>
+    <div class="clrt-row clrt-row-sm" id="clrt-concur-row">
+        <label style="width:34px">\u5E76\u53D1</label>
         <select id="clrt-concur" class="clrt-select">
             <option value="1">1</option>
             <option value="2" selected>2</option>
             <option value="3">3</option>
         </select>
-        <label style="margin-left:12px">\u5FD7\u613F</label>
-        <select id="clrt-volunteer" class="clrt-select" title="\u9884\u9009\u6279\u6B21\u5FD7\u613F\uFF08\u6447\u53F7\u5236\uFF09\uFF0C\u6B63\u9009\u6279\u6B21\u65E0\u6548">
+        <span style="font-size:11px;color:#909399">\u5373\u9009\u5373\u5F97\u573A\u6B21\u751F\u6548</span>
+    </div>
+    <div class="clrt-row clrt-row-sm" id="clrt-volunteer-row">
+        <label style="width:34px">\u5FD7\u613F</label>
+        <select id="clrt-volunteer" class="clrt-select" title="\u7B2C\u4E00\u8F6E\u901A\u8BC6\u9009\u4FEE\u5FD7\u613F\uFF08\u6447\u53F7\u5236\uFF09\uFF0C\u4EC5\u7B2C\u4E00\u8F6E\u751F\u6548">
             <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
             <option value="4">4</option>
             <option value="5">5</option>
         </select>
+        <span style="font-size:11px;color:#909399">\u6447\u53F7\u5236\u5FD7\u613F</span>
     </div>
     <div class="clrt-row clrt-row-sm">
-        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">\u25B6 \u5F00\u59CB\u62A2\u8BFE</button>
+        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">\u25B6 \u5F00\u59CB</button>
         <button id="clrt-btn-stop"  class="clrt-btn clrt-btn-stop" style="display:none">\u23F9 \u505C\u6B62</button>
         <button id="clrt-btn-skip"  class="clrt-btn clrt-btn-warn" style="display:none">\u23ED \u8DF3\u8FC7\u5F53\u524D</button>
     </div>
@@ -1430,7 +1583,7 @@
         if (running) {
           if (
             !confirm(
-              "\u6B63\u5728\u62A2\u8BFE\u4E2D\uFF0C\u786E\u5B9A\u5173\u95ED\u9762\u677F\u5417\uFF1F",
+              "Celeritas \u6B63\u5728\u8FD0\u884C\uFF0C\u786E\u5B9A\u5173\u95ED\u9762\u677F\u5417\uFF1F",
             )
           )
             return;
@@ -1445,7 +1598,7 @@
       const btn = document.createElement("button");
       btn.id = "clrt-reopen";
       btn.textContent = "\u26A1";
-      btn.title = "\u6253\u5F00\u62A2\u8BFE\u52A9\u624B";
+      btn.title = "\u6253\u5F00 Celeritas";
       btn.addEventListener("click", function () {
         byId(PANEL_ID).style.display = "";
         this.remove();
@@ -1458,6 +1611,8 @@
       buildPanel();
       makeDraggable();
       bindEvents();
+      applyPageContext(detectPageContext());
+      watchPageContext();
       renderCourseList();
       updateProgress();
       updateBtnState();
@@ -1471,14 +1626,14 @@
       if (volSel) volSel.value = String(volunteer);
       updateTypeHint();
       log(
-        "\u2705 \u62A2\u8BFE\u52A9\u624B\u5DF2\u5C31\u7EEA | \u5171 " +
+        "\u2705 Celeritas \u5DF2\u5C31\u7EEA | \u5171 " +
           courses.length +
           " \u95E8\u8BFE\u7A0B",
       );
       document.addEventListener("visibilitychange", function () {
         if (document.hidden && running) {
           log(
-            "\u26A0\uFE0F \u9875\u9762\u5DF2\u9690\u85CF\uFF01\u6D4F\u89C8\u5668\u53EF\u80FD\u964D\u9891\u5B9A\u65F6\u5668\u5F71\u54CD\u62A2\u8BFE\u901F\u5EA6\uFF0C\u8BF7\u4FDD\u6301\u6B64\u6807\u7B7E\u9875\u53EF\u89C1",
+            "\u26A0\uFE0F \u9875\u9762\u5DF2\u9690\u85CF\uFF01\u6D4F\u89C8\u5668\u53EF\u80FD\u964D\u9891\u5B9A\u65F6\u5668\u5F71\u54CD\u8FD0\u884C\u901F\u5EA6\uFF0C\u8BF7\u4FDD\u6301\u6B64\u6807\u7B7E\u9875\u53EF\u89C1",
             "warn",
           );
         }

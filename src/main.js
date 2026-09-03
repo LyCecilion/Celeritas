@@ -1,10 +1,18 @@
 import {
     backoffDelay,
+    courseListed,
+    courseSelected,
+    effectiveConcurrency,
     extractRows,
     extractSections,
     findNextCourseIndex,
     findRemaining,
+    isLotteryRound,
+    markRemainingSkipped,
     normalizeCourse,
+    pickVolunteer,
+    releaseClaimed,
+    roundFromBatchName,
 } from "./core.js";
 
 (function () {
@@ -26,17 +34,12 @@ import {
     const LOG_MAX = 200; // maximum number of log entries kept
     // Course types: XGKC=elective, TYKC=sports club, TJKC=recommended class (all on the "in-plan courses" page)
     const TYPE_LABELS = { XGKC: "通识选修", TYKC: "体育俱乐部", TJKC: "推荐班级课程" };
-    const TYPE_PAGE_HINT = {
-        XGKC: "通识选修在通识选修课程页面",
-        TYKC: "体育俱乐部在方案内课程页面",
-        TJKC: "推荐班级课程在方案内课程页面",
-    };
     const TYPE_PLACEHOLDER = {
         XGKC: "课程号或关键词，如 24TS2244",
         TYKC: "课程名或俱乐部，如 羽毛球",
         TJKC: "课程名或关键词，如 高级写作",
     };
-    const TYPE_TAG = { TYKC: "体", TJKC: "推" };
+    const TYPE_TAG = { XGKC: "通", TYKC: "体", TJKC: "推" };
     const VOLUNTEER_NAMES = {
         1: "第一志愿",
         2: "第二志愿",
@@ -50,125 +53,153 @@ import {
         const css = `
 #${PANEL_ID} {
     position: fixed; right: 20px; top: 100px; z-index: 99999;
-    width: 340px; max-height: 85vh;
-    background: #fff; border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.1);
+    width: 360px; max-height: 86vh;
+    background: rgba(255,255,255,.97);
+    border: 1px solid rgba(62,116,255,.14);
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(23,55,139,.22), 0 4px 12px rgba(23,55,139,.12);
     font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex; flex-direction: column; overflow: hidden;
     user-select: none;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 .clrt-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 14px; background: linear-gradient(135deg, #2655c8, #1a3f9e);
-    color: #fff; cursor: move; font-weight: 600; font-size: 14px;
+    padding: 11px 14px;
+    background: linear-gradient(135deg, #4a80ff 0%, #2655c8 55%, #1a3f9e 100%);
+    color: #fff; cursor: move; font-weight: 700; font-size: 14px; letter-spacing: .2px;
 }
 .clrt-hdr-btn {
     background: none; border: none; color: #fff; cursor: pointer;
     font-size: 16px; width: 24px; height: 24px; line-height: 24px;
-    text-align: center; border-radius: 4px; margin-left: 2px;
+    text-align: center; border-radius: 6px; margin-left: 2px;
+    transition: background .15s;
 }
-.clrt-hdr-btn:hover { background: rgba(255,255,255,.2); }
+.clrt-hdr-btn:hover { background: rgba(255,255,255,.22); }
 .clrt-body { padding: 12px 14px; overflow-y: auto; flex: 1; }
 .clrt-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
 .clrt-row-sm { margin-bottom: 6px; }
+.clrt-status { display: flex; gap: 6px; margin-bottom: 8px; }
+.clrt-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; line-height: 18px;
+}
+.clrt-chip-type { background: #ecf3ff; color: #2655c8; }
+.clrt-chip-round { background: #fff7e6; color: #b26a00; }
+.clrt-chip-round.clrt-chip-fast { background: #ffecef; color: #c8263c; }
 .clrt-input {
-    flex: 1; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 6px;
-    font-size: 12px; outline: none; box-sizing: border-box;
+    flex: 1; padding: 7px 11px; border: 1px solid #dce3f2; border-radius: 9px;
+    font-size: 12px; outline: none; box-sizing: border-box; background: #fbfcff;
+    transition: border-color .15s, box-shadow .15s;
 }
-.clrt-input:focus { border-color: #2655c8; }
+.clrt-input:focus {
+    border-color: #3d74ff;
+    box-shadow: 0 0 0 3px rgba(61,116,255,.14);
+    background: #fff;
+}
 .clrt-select {
-    padding: 4px 8px; border: 1px solid #dcdfe6; border-radius: 6px;
-    font-size: 12px; outline: none; background: #fff;
+    padding: 5px 8px; border: 1px solid #dce3f2; border-radius: 8px;
+    font-size: 12px; outline: none; background: #fbfcff; color: #303133;
+    transition: border-color .15s;
 }
+.clrt-select:focus { border-color: #3d74ff; }
 .clrt-btn {
-    padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
-    transition: all .15s;
+    padding: 7px 14px; border: none; border-radius: 9px; cursor: pointer;
+    font-size: 12px; font-weight: 600; white-space: nowrap; color: #fff;
+    transition: all .15s; box-shadow: 0 3px 10px rgba(38,85,200,.28);
+    flex-shrink: 0;
 }
-.clrt-btn:hover { transform: translateY(-1px); }
+.clrt-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
 .clrt-btn:active { transform: translateY(0); }
-.clrt-btn-sm { padding: 6px 10px; font-size: 11px; }
-.clrt-btn-go { background: #2655c8; color: #fff; }
-.clrt-btn-go:hover { background: #1a3f9e; }
-.clrt-btn-stop { background: #f56c6c; color: #fff; }
-.clrt-btn-stop:hover { background: #e04545; }
-.clrt-btn-warn { background: #e6a23c; color: #fff; }
-.clrt-btn-warn:hover { background: #cf9236; }
+.clrt-btn-sm { padding: 6px 12px; font-size: 11px; }
+.clrt-btn-go { background: linear-gradient(135deg, #4a80ff, #2655c8); }
+.clrt-btn-stop { background: linear-gradient(135deg, #ff7d6e, #f05050); box-shadow: 0 3px 10px rgba(240,80,80,.3); }
+.clrt-btn-warn { background: linear-gradient(135deg, #f5b04d, #e6a23c); box-shadow: 0 3px 10px rgba(230,162,60,.3); }
 
 .clrt-course-list {
-    border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
-    max-height: 200px; overflow-y: auto; background: #fafbfc;
+    border: 1px solid #e8ecf5; border-radius: 10px; margin-bottom: 8px;
+    max-height: 200px; overflow-y: auto; background: #fafbff;
 }
 .clrt-course-item {
-    display: flex; align-items: center; padding: 7px 10px;
-    border-bottom: 1px solid #ebeef5; cursor: grab; gap: 8px;
+    display: flex; align-items: center; padding: 7px 11px;
+    border-bottom: 1px solid #eef1f8; cursor: grab; gap: 8px;
     transition: background .15s;
 }
 .clrt-course-item:last-child { border-bottom: none; }
-.clrt-course-item:hover { background: #ecf5ff; }
+.clrt-course-item:hover { background: #f0f5ff; }
 .clrt-course-item.clrt-dragging { opacity: .4; background: #f0f2f5; }
 .clrt-course-item.clrt-grabbed { background: #f0f9eb; color: #67c23a; }
 .clrt-course-item.clrt-skipped { background: #fef7e8; color: #e6a23c; }
-.clrt-course-item.clrt-active { background: #ecf5ff; border-left: 3px solid #2655c8; }
+.clrt-course-item.clrt-active { background: #ecf3ff; border-left: 3px solid #3d74ff; }
 .clrt-course-code { font-weight: 700; font-family: monospace; font-size: 13px; min-width: 80px; }
 .clrt-type-tag {
-    background: #409eff; color: #fff; border-radius: 3px;
-    font-size: 10px; padding: 1px 4px; flex-shrink: 0;
+    color: #fff; border-radius: 4px;
+    font-size: 10px; padding: 1px 5px; flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
 }
+.clrt-type-tag-xgkc { background: #409eff; }
+.clrt-type-tag-tykc { background: #67c23a; }
+.clrt-type-tag-tjkc { background: #e6a23c; }
 .clrt-course-name { flex: 1; color: #606266; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clrt-badge {
     display: inline-block; width: 18px; height: 18px; line-height: 18px;
     text-align: center; border-radius: 50%; color: #fff; font-size: 11px;
 }
-.clrt-badge-ok { background: #67c23a; }
+.clrt-badge-ok { background: #34d399; }
 .clrt-badge-skip { background: #e6a23c; }
 .clrt-course-del {
     background: none; border: none; color: #c0c4cc; cursor: pointer;
     font-size: 16px; width: 22px; height: 22px; line-height: 22px; text-align: center;
-    border-radius: 4px; flex-shrink: 0;
+    border-radius: 6px; flex-shrink: 0; transition: color .15s, background .15s;
 }
 .clrt-course-del:hover { color: #f56c6c; background: #fef0f0; }
 
 .clrt-progress-bar {
-    width: 100%; height: 6px; background: #ebeef5; border-radius: 3px;
+    width: 100%; height: 7px; background: #eef1f8; border-radius: 4px;
     margin-bottom: 4px; overflow: hidden;
 }
 .clrt-progress-fill {
-    height: 100%; background: linear-gradient(90deg, #67c23a, #409eff);
-    border-radius: 3px; transition: width .3s; width: 0%;
+    height: 100%; background: linear-gradient(90deg, #34d399, #409eff, #4a80ff);
+    background-size: 200% 100%;
+    border-radius: 4px; transition: width .3s; width: 0%;
 }
 .clrt-progress-text { font-size: 11px; color: #909399; margin-bottom: 6px; }
 
 .clrt-log {
-    background: #1e1e1e; color: #d4d4d4; border-radius: 6px;
+    background: #151a24; color: #d4d4d4; border-radius: 10px;
+    border: 1px solid #232a3a;
     padding: 8px 10px; font-size: 11px; font-family: monospace;
     max-height: 180px; overflow-y: auto; line-height: 1.5;
 }
 .clrt-search-results {
-    border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
-    max-height: 220px; overflow-y: auto; background: #fff;
+    border: 1px solid #e8ecf5; border-radius: 10px; margin-bottom: 8px;
+    max-height: 220px; overflow-y: auto; background: #fafbff;
 }
 .clrt-search-item {
-    display: flex; align-items: center; padding: 6px 10px;
-    border-bottom: 1px solid #f0f0f0; gap: 6px; font-size: 11px;
+    display: flex; align-items: center; padding: 6px 11px;
+    border-bottom: 1px solid #eef1f8; gap: 6px; font-size: 11px;
 }
 .clrt-search-item:last-child { border-bottom: none; }
 .clrt-search-item-main { flex: 1; min-width: 0; }
 .clrt-search-item-code { font-weight: 700; font-family: monospace; font-size: 12px; }
 .clrt-search-item-meta { color: #909399; margin-top: 2px; }
 .clrt-search-item-cap { color: #606266; white-space: nowrap; text-align: right; }
-.clrt-search-item-cap .clrt-cap-left { color: #67c23a; font-weight: 600; }
+.clrt-search-item-cap .clrt-cap-left { color: #34d399; font-weight: 600; }
 .clrt-search-add {
-    background: #2655c8; color: #fff; border: none; border-radius: 4px;
+    background: linear-gradient(135deg, #4a80ff, #2655c8); color: #fff;
+    border: none; border-radius: 6px;
     padding: 3px 10px; cursor: pointer; font-size: 11px; white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(38,85,200,.25);
 }
-.clrt-search-add:hover { background: #1a3f9e; }
-.clrt-search-add:disabled { background: #c0c4cc; cursor: not-allowed; }
+.clrt-search-add:hover { filter: brightness(1.08); }
+.clrt-search-add:disabled { background: #c0c4cc; box-shadow: none; cursor: not-allowed; }
 .clrt-search-empty { padding: 16px; text-align: center; color: #c0c4cc; font-size: 12px; }
 .clrt-search-loading { padding: 12px; text-align: center; color: #909399; font-size: 12px; }
 .clrt-search-hdr {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 4px 10px; font-size: 11px; color: #909399;
+    padding: 5px 11px; font-size: 11px; color: #909399;
 }
 .clrt-search-close {
     background: none; border: none; color: #c0c4cc; cursor: pointer; font-size: 14px;
@@ -184,9 +215,9 @@ import {
 
 #clrt-reopen {
     position: fixed; right: 20px; bottom: 20px; z-index: 99998;
-    width: 42px; height: 42px; border-radius: 50%; border: none;
-    background: #2655c8; color: #fff; font-size: 18px;
-    cursor: pointer; box-shadow: 0 4px 16px rgba(38,85,200,.4);
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #4a80ff, #2655c8); color: #fff; font-size: 19px;
+    cursor: pointer; box-shadow: 0 6px 20px rgba(38,85,200,.45);
     transition: transform .15s;
 }
 #clrt-reopen:hover { transform: scale(1.1); }
@@ -202,6 +233,7 @@ import {
     let concurNum = 2; // number of concurrent workers
     let courseType = "XGKC"; // current panel course type: XGKC / TYKC / TJKC
     let volunteer = 1; // volunteer grade in pre-select batches (1-5, lottery-based)
+    let pageRound = null; // round auto-detected from the current batch ("first" / "second")
     let running = false;
     let stopped = false;
     let grabbed = []; // [code, ...] courses successfully grabbed
@@ -313,7 +345,11 @@ import {
                       "</span>"
                     : '<span style="color:#e6a23c;font-size:11px;flex-shrink:0">任意班</span>';
                 const typeTag = TYPE_TAG[c.type]
-                    ? '<span class="clrt-type-tag">' + TYPE_TAG[c.type] + "</span>"
+                    ? '<span class="clrt-type-tag clrt-type-tag-' +
+                      String(c.type).toLowerCase() +
+                      '">' +
+                      TYPE_TAG[c.type] +
+                      "</span>"
                     : "";
                 const isGrabbed = grabbed.includes(c.code);
                 const isSkipped = skipped.includes(c.code);
@@ -413,14 +449,84 @@ import {
         if (skipBtn) skipBtn.style.display = running ? "" : "none";
     }
 
+    // Update the placeholder and the detected-type chip
     function updateTypeHint() {
         const input = byId("clrt-input-keyword");
-        const hint = byId("clrt-type-hint");
+        const chip = byId("clrt-chip-type");
         if (input) {
             input.placeholder = TYPE_PLACEHOLDER[courseType] || TYPE_PLACEHOLDER.XGKC;
         }
-        if (hint) {
-            hint.textContent = TYPE_PAGE_HINT[courseType] || TYPE_PAGE_HINT.XGKC;
+        if (chip) {
+            chip.textContent = TYPE_LABELS[courseType] || "通识选修";
+        }
+    }
+
+    // ===================== Page Context Detection =====================
+    // Read the page's own teaching-class type and current batch name; drives auto-detection
+    function detectPageContext() {
+        const vue = window.grablessonsVue;
+        if (!vue) return null;
+        const pageType = vue.$data && vue.$data.teachingClassType;
+        const batchName =
+            (vue.lcParam && vue.lcParam.currentBatch && vue.lcParam.currentBatch.name) || "";
+        const type =
+            pageType === "XGKC" || pageType === "TYKC" || pageType === "TJKC" ? pageType : null;
+        return { type: type, round: roundFromBatchName(batchName) };
+    }
+
+    // Apply the detected page context: follow the page's type and refresh round-specific UI
+    function applyPageContext(ctx) {
+        if (!ctx) return;
+        if (ctx.type && ctx.type !== courseType) {
+            courseType = ctx.type;
+            saveConfig();
+            updateTypeHint();
+            const roundText =
+                ctx.round === "first" ? " · 第一轮" : ctx.round === "second" ? " · 第二轮" : "";
+            log("🔎 自动识别: " + TYPE_LABELS[courseType] + roundText, "info");
+        }
+        if (ctx.round !== pageRound) {
+            pageRound = ctx.round;
+            updateRoundUI();
+        }
+    }
+
+    // Toggle round-specific controls: volunteer (first-round electives) vs concurrency (second round)
+    function updateRoundUI() {
+        const volRow = byId("clrt-volunteer-row");
+        const concurRow = byId("clrt-concur-row");
+        const chip = byId("clrt-chip-round");
+        const lottery = isLotteryRound(pageRound, courseType);
+        if (volRow) volRow.style.display = lottery ? "" : "none";
+        if (concurRow) concurRow.style.display = lottery ? "none" : "";
+        if (chip) {
+            chip.style.display = pageRound ? "" : "none";
+            chip.textContent = lottery
+                ? "🎲 第一轮 · 志愿摇号"
+                : pageRound === "second"
+                  ? "⚡ 第二轮 · 正选"
+                  : "⚡ 第一轮 · 即选即得";
+            chip.classList.toggle("clrt-chip-fast", !!pageRound && !lottery);
+        }
+    }
+
+    // Watch the page's teaching-class type and batch; auto-detect when the user switches
+    function watchPageContext() {
+        const vue = window.grablessonsVue;
+        if (!vue) return;
+        try {
+            vue.$watch(
+                function () {
+                    const data = vue.$data;
+                    const batch = vue.lcParam && vue.lcParam.currentBatch;
+                    return (data && data.teachingClassType) + "|" + ((batch && batch.name) || "");
+                },
+                function () {
+                    applyPageContext(detectPageContext());
+                },
+            );
+        } catch (_) {
+            /* */
         }
     }
 
@@ -578,9 +684,7 @@ import {
             const rows = extractRows(res.data.data);
             if (!rows || !rows.length) continue;
 
-            const found = rows.find(function (r) {
-                return r.KCH === code || (r.KCH && r.KCH.indexOf(code) !== -1);
-            });
+            const found = courseListed(rows, code);
             if (found) {
                 log(
                     "✔ 已验证: " + code + " 出现在已选列表（第 " + (i + 1) + " 次查询）",
@@ -621,15 +725,7 @@ import {
             const rows = extractRows(res.data.data);
             if (!rows || !rows.length) continue;
 
-            const found = rows.find(function (r) {
-                const jx = r.JXBID || r.jxbid || r.clazzId || "";
-                const sn = r.sportName || r.sportname || "";
-                if (jxbid && jx) return jx === jxbid; // specific section: exact match
-                if (sportName && sn) return sn === sportName; // specific club: match by name
-                const kch = r.KCH || r.kch || "";
-                // any section: success if any section of the course is already selected
-                return kch === code || (kch && String(kch).indexOf(code) !== -1);
-            });
+            const found = courseSelected(rows, code, jxbid, sportName);
             if (found) {
                 log(
                     "✔ 已验证: " + code + " 出现在已选列表（第 " + (i + 1) + " 次查询）",
@@ -667,18 +763,11 @@ import {
     }
 
     function releaseClaim(code) {
-        claimed = claimed.filter(function (c) {
-            return c !== code;
-        });
+        claimed = releaseClaimed(claimed, code);
     }
 
     function skipRemainingCourses() {
-        for (let i = 0; i < courses.length; i++) {
-            const c = courses[i];
-            if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
-                skipped.push(c.code);
-            }
-        }
+        markRemainingSkipped(courses, grabbed, skipped);
     }
 
     // Grab a single course (called inside a worker; resolves true = success or skipped)
@@ -747,11 +836,7 @@ import {
                                 continue;
                             }
                             const want = target.volunteer || volunteer;
-                            chosenVolunteer = volList.some(function (v) {
-                                return v.grade === want;
-                            })
-                                ? want
-                                : volList[0].grade;
+                            chosenVolunteer = pickVolunteer(volList, want);
                         }
 
                         const result = await addCourse(
@@ -810,7 +895,7 @@ import {
                                       )
                                     : await verifyCourseGrab(target.code);
                             if (verified) {
-                                log(wTag + "✅ " + target.code + " 抢课成功！", "success");
+                                log(wTag + "✅ " + target.code + " 已选上！", "success");
                                 grabbed.push(target.code);
                                 updateProgress();
                                 renderCourseList();
@@ -824,7 +909,7 @@ import {
                                             target.code +
                                             " " +
                                             (target.name || "") +
-                                            " 抢课成功！",
+                                            " 已选上！",
                                         duration: 8000,
                                         showClose: true,
                                     });
@@ -960,11 +1045,15 @@ import {
                 return "（" + TYPE_LABELS[t] + " " + typeCount[t] + " 门）";
             })
             .join("");
-        log("🚀 开始抢课，共 " + courses.length + " 门，" + concurNum + " 并发" + extra);
+        const concurrency = effectiveConcurrency(pageRound, courseType, concurNum);
+        log("🚀 开始，共 " + courses.length + " 门，" + concurrency + " 并发" + extra);
+        if (isLotteryRound(pageRound, courseType)) {
+            log("🎲 第一轮通识为志愿摇号制，按 1 并发提交志愿", "info");
+        }
         beep(true);
 
         const workers = [];
-        for (let i = 0; i < concurNum; i++) {
+        for (let i = 0; i < concurrency; i++) {
             workers.push(worker(i + 1));
         }
         Promise.all(workers).then(function () {
@@ -1030,6 +1119,10 @@ import {
     </span>
 </div>
 <div class="clrt-body" id="clrt-body">
+    <div class="clrt-status">
+        <span id="clrt-chip-type" class="clrt-chip clrt-chip-type"></span>
+        <span id="clrt-chip-round" class="clrt-chip clrt-chip-round" style="display:none"></span>
+    </div>
     <div class="clrt-row clrt-row-sm">
         <label>类型</label>
         <select id="clrt-type" class="clrt-select">
@@ -1037,16 +1130,15 @@ import {
             <option value="TYKC">体育俱乐部</option>
             <option value="TJKC">推荐班级课程</option>
         </select>
-        <span id="clrt-type-hint" style="font-size:11px;color:#909399"></span>
     </div>
     <div class="clrt-row">
-        <input id="clrt-input-keyword" class="clrt-input" style="flex:2" placeholder="课程号或关键词，如 24TS2244" maxlength="40">
-        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm">🔍 搜索</button>
+        <input id="clrt-input-keyword" class="clrt-input" style="flex:1;min-width:0" placeholder="课程号或关键词，如 24TS2244" maxlength="40">
+        <button id="clrt-btn-search" class="clrt-btn clrt-btn-sm clrt-btn-go">🔍 搜索</button>
     </div>
     <div class="clrt-search-results" id="clrt-search-results" style="display:none"></div>
     <div class="clrt-course-list" id="clrt-course-list"></div>
-    <div class="clrt-row clrt-row-sm">
-        <label>间隔</label>
+    <div class="clrt-row clrt-row-sm" id="clrt-interval-row">
+        <label style="width:34px">间隔</label>
         <select id="clrt-interval" class="clrt-select">
             <option value="400">400ms</option>
             <option value="600">600ms</option>
@@ -1055,23 +1147,30 @@ import {
             <option value="1500">1500ms</option>
             <option value="2000">2000ms</option>
         </select>
-        <label style="margin-left:12px">并发</label>
+        <span style="font-size:11px;color:#909399">连续失败自动退避</span>
+    </div>
+    <div class="clrt-row clrt-row-sm" id="clrt-concur-row">
+        <label style="width:34px">并发</label>
         <select id="clrt-concur" class="clrt-select">
             <option value="1">1</option>
             <option value="2" selected>2</option>
             <option value="3">3</option>
         </select>
-        <label style="margin-left:12px">志愿</label>
-        <select id="clrt-volunteer" class="clrt-select" title="预选批次志愿（摇号制），正选批次无效">
+        <span style="font-size:11px;color:#909399">即选即得场次生效</span>
+    </div>
+    <div class="clrt-row clrt-row-sm" id="clrt-volunteer-row">
+        <label style="width:34px">志愿</label>
+        <select id="clrt-volunteer" class="clrt-select" title="第一轮通识选修志愿（摇号制），仅第一轮生效">
             <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
             <option value="4">4</option>
             <option value="5">5</option>
         </select>
+        <span style="font-size:11px;color:#909399">摇号制志愿</span>
     </div>
     <div class="clrt-row clrt-row-sm">
-        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">▶ 开始抢课</button>
+        <button id="clrt-btn-start" class="clrt-btn clrt-btn-go">▶ 开始</button>
         <button id="clrt-btn-stop"  class="clrt-btn clrt-btn-stop" style="display:none">⏹ 停止</button>
         <button id="clrt-btn-skip"  class="clrt-btn clrt-btn-warn" style="display:none">⏭ 跳过当前</button>
     </div>
@@ -1349,7 +1448,7 @@ import {
 
         byId("clrt-btn-close").addEventListener("click", function () {
             if (running) {
-                if (!confirm("正在抢课中，确定关闭面板吗？")) return;
+                if (!confirm("Celeritas 正在运行，确定关闭面板吗？")) return;
                 stopGrab();
             }
             byId(PANEL_ID).style.display = "none";
@@ -1363,7 +1462,7 @@ import {
         const btn = document.createElement("button");
         btn.id = "clrt-reopen";
         btn.textContent = "⚡";
-        btn.title = "打开抢课助手";
+        btn.title = "打开 Celeritas";
         btn.addEventListener("click", function () {
             byId(PANEL_ID).style.display = "";
             this.remove();
@@ -1378,6 +1477,8 @@ import {
         buildPanel();
         makeDraggable();
         bindEvents();
+        applyPageContext(detectPageContext());
+        watchPageContext();
         renderCourseList();
         updateProgress();
         updateBtnState();
@@ -1393,12 +1494,12 @@ import {
         if (volSel) volSel.value = String(volunteer);
         updateTypeHint();
 
-        log("✅ 抢课助手已就绪 | 共 " + courses.length + " 门课程");
+        log("✅ Celeritas 已就绪 | 共 " + courses.length + " 门课程");
 
         // Listen for page visibility: browsers throttle setTimeout when hidden, which slows grabbing
         document.addEventListener("visibilitychange", function () {
             if (document.hidden && running) {
-                log("⚠️ 页面已隐藏！浏览器可能降频定时器影响抢课速度，请保持此标签页可见", "warn");
+                log("⚠️ 页面已隐藏！浏览器可能降频定时器影响运行速度，请保持此标签页可见", "warn");
             }
         });
     }

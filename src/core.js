@@ -74,6 +74,113 @@ export function findRemaining(courses, grabbed, skipped) {
 }
 
 /**
+ * Remove a course code from a claimed list.
+ * @param {string[]} claimed
+ * @param {string} code
+ * @returns {string[]}
+ */
+export function releaseClaimed(claimed, code) {
+    return claimed.filter(function (c) {
+        return c !== code;
+    });
+}
+
+/**
+ * Mark every pending course as skipped (mutates `skipped`).
+ * @param {Array<{ code: string }>} courses
+ * @param {string[]} grabbed
+ * @param {string[]} skipped
+ */
+export function markRemainingSkipped(courses, grabbed, skipped) {
+    for (let i = 0; i < courses.length; i++) {
+        const c = courses[i];
+        if (!grabbed.includes(c.code) && !skipped.includes(c.code)) {
+            skipped.push(c.code);
+        }
+    }
+}
+
+/**
+ * Choose the volunteer grade for a section: prefer the wanted grade, fall back to the first available.
+ * @param {Array<Record<string, unknown>>} volList
+ * @param {number} want
+ * @returns {unknown}
+ */
+export function pickVolunteer(volList, want) {
+    return volList.some(function (v) {
+        return v.grade === want;
+    })
+        ? want
+        : volList[0].grade;
+}
+
+/**
+ * Whether the course already appears in a selected-list response (exact code or prefix match).
+ * @param {Array<Record<string, unknown>>} rows
+ * @param {string} code
+ * @returns {boolean}
+ */
+export function courseListed(rows, code) {
+    return rows.some(function (r) {
+        return r.KCH === code || (r.KCH && String(r.KCH).indexOf(code) !== -1);
+    });
+}
+
+/**
+ * Whether a section of the course is already selected: exact section, exact club, or any section.
+ * @param {Array<Record<string, unknown>>} rows
+ * @param {string} code
+ * @param {string} jxbid
+ * @param {string} sportName
+ * @returns {boolean}
+ */
+export function courseSelected(rows, code, jxbid, sportName) {
+    return rows.some(function (r) {
+        const jx = r.JXBID || r.jxbid || r.clazzId || "";
+        const sn = r.sportName || r.sportname || "";
+        if (jxbid && jx) return jx === jxbid; // specific section: exact match
+        if (sportName && sn) return sn === sportName; // specific club: match by name
+        const kch = r.KCH || r.kch || "";
+        // any section: success if any section of the course is already selected
+        return kch === code || (kch && String(kch).indexOf(code) !== -1);
+    });
+}
+
+/**
+ * Round of a batch derived from its name: "first" / "second", or null when unknown.
+ * @param {string | undefined} batchName
+ * @returns {string | null}
+ */
+export function roundFromBatchName(batchName) {
+    if (!batchName) return null;
+    if (batchName.includes("第二轮")) return "second";
+    if (batchName.includes("第一轮")) return "first";
+    return null;
+}
+
+/**
+ * Whether the batch runs on lottery (志愿摇号): only first-round electives do.
+ * In-plan courses are first-come-first-served even in the pre-select round, and so is the whole second round.
+ * @param {string | null} round
+ * @param {string} type
+ * @returns {boolean}
+ */
+export function isLotteryRound(round, type) {
+    return round === "first" && type === "XGKC";
+}
+
+/**
+ * Effective concurrency: the configured value applies everywhere except the lottery round (fixed at 1).
+ * @param {string | null} round
+ * @param {string} type
+ * @param {number} configured
+ * @returns {number}
+ */
+export function effectiveConcurrency(round, type, configured) {
+    return isLotteryRound(round, type) ? 1 : configured;
+}
+
+/**
  * Normalize a legacy stored course: no jxbid means "any section"; fill type/sportName/volunteer defaults.
  * @param {Record<string, unknown>} c
  * @returns {Record<string, unknown>}
